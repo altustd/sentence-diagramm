@@ -10,23 +10,31 @@ These diagrams visually represent the grammatical structure:
 - "Pedestals" for prepositional phrases
 """
 
-def generate_classic_diagram_svg(doc, width: int = 900, height: int = 280) -> str:
+def generate_classic_diagram_svg(doc, width: int = 950, height: int = 320) -> str:
     """
-    Generate an SVG string for a classic Reed-Kellogg style sentence diagram.
+    Generate a classic Reed-Kellogg style sentence diagram as SVG.
 
-    This is a practical approximation that works well for simple to moderately
-    complex sentences (SVO, adjectives, adverbs, prepositional phrases, basic compounds).
+    Attempts to follow traditional rules:
+    - Main horizontal baseline for subject | verb [ | direct object ]
+    - Vertical line after subject
+    - Slanted lines for adjectives (below nouns) and adverbs (below verbs)
+    - Prepositional phrases on "pedestals" (slanted line down from attachment point,
+      then horizontal line for the object of the preposition)
+    - Articles treated as modifiers of the noun they precede.
 
-    For very complex sentences (multiple clauses, infinitives, gerunds) it will
-    still produce a readable diagram but may not be 100% textbook perfect.
+    This is a heuristic approximation based on spaCy dependencies.
+    It works well for simple declarative sentences and gets progressively
+    less perfect with complex clauses, questions, passives with agents, etc.
+    German support is approximate (V2 order etc.).
     """
-    # Collect key grammatical elements using dependency labels
+    # --- Extract structure using spaCy deps (heuristic) ---
     subject = None
     verb = None
     direct_object = None
-    subject_modifiers = []   # amod on subject
-    verb_modifiers = []      # advmod on verb
-    preps = []               # (prep_token, pobj_token)
+    subject_mods = []      # adjectives/articles for subject
+    verb_mods = []         # adverbs for verb
+    obj_mods = []          # adjectives for direct object
+    prepositional_phrases = []  # list of (prep_token, pobj_token, attachment_token)
 
     for token in doc:
         if token.dep_ in ("nsubj", "nsubjpass"):
@@ -35,91 +43,143 @@ def generate_classic_diagram_svg(doc, width: int = 900, height: int = 280) -> st
             verb = token
         elif token.dep_ in ("dobj", "attr", "oprd"):
             direct_object = token
-        elif token.dep_ == "amod" and subject and token.head == subject:
-            subject_modifiers.append(token)
+        elif token.dep_ == "amod":
+            if subject and token.head == subject:
+                subject_mods.append(token)
+            elif direct_object and token.head == direct_object:
+                obj_mods.append(token)
         elif token.dep_ == "advmod" and verb and token.head == verb:
-            verb_modifiers.append(token)
+            verb_mods.append(token)
         elif token.dep_ == "prep":
-            for child in token.children:
-                if child.dep_ == "pobj":
-                    preps.append((token, child))
-                    break
+            pobj = next((c for c in token.children if c.dep_ == "pobj"), None)
+            if pobj:
+                # attach to the most recent main element (object > verb > subject)
+                attach = direct_object or verb or subject
+                prepositional_phrases.append((token, pobj, attach))
 
-    # Start building SVG
+    # --- Layout parameters ---
+    base_y = 160
+    margin_left = 60
+    char_width = 7.8   # approximate for Georgia 15px
+    line_height = 18
+    vertical_bar_height = 22
+
     parts = []
-    parts.append(f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" font-family="Georgia, serif">')
+    parts.append(
+        f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" '
+        f'font-family="Georgia, Times, serif" font-size="15">'
+    )
 
-    # Light background and title
-    parts.append(f'<rect x="0" y="0" width="{width}" height="30" fill="#f8f9fa"/>')
-    sentence_text = " ".join(t.text for t in doc)
-    parts.append(f'<text x="12" y="20" font-size="12" fill="#444" font-style="italic">{sentence_text}</text>')
+    # Subtle header with the original sentence
+    sentence_str = " ".join(t.text for t in doc)
+    parts.append(
+        f'<rect x="0" y="0" width="{width}" height="26" fill="#f4f4f4" rx="3"/>'
+    )
+    parts.append(
+        f'<text x="{margin_left}" y="18" font-size="11" fill="#555" font-style="italic">'
+        f'{sentence_str}</text>'
+    )
 
-    # Baseline y
-    base_y = 140          # main horizontal line y-position
-    x = 60                # starting x for the diagram
+    x = margin_left
 
-    # --- SUBJECT SIDE ---
+    # Helper to draw a word on the baseline
+    def draw_word(text, x_pos, y_pos, bold=False):
+        weight = 'font-weight="600"' if bold else ''
+        parts.append(
+            f'<text x="{x_pos}" y="{y_pos}" {weight}>{text}</text>'
+        )
+
+    # Helper for slanted modifier line + label
+    def draw_modifier(mod_text, attach_x, attach_y, is_above=False):
+        offset = -28 if is_above else 28
+        label_y = attach_y + offset
+        # label
+        parts.append(f'<text x="{attach_x - 5}" y="{label_y}" font-size="12" fill="#333">{mod_text}</text>')
+        # slanted line
+        line_y1 = attach_y - 3 if is_above else attach_y + 3
+        line_y2 = label_y + (6 if is_above else -6)
+        parts.append(
+            f'<line x1="{attach_x - 2}" y1="{line_y1}" x2="{attach_x - 18}" y2="{line_y2}" '
+            'stroke="#444" stroke-width="1.6" stroke-linecap="round"/>'
+        )
+
+    # --- Draw subject + its modifiers ---
     if subject:
-        # Adjectives / articles on slanted lines above the subject
-        mod_x = x
-        for mod in subject_modifiers:
-            parts.append(f'<text x="{mod_x}" y="{base_y - 38}" font-size="13" fill="#222">{mod.text}</text>')
-            # Slanted modifier line
-            parts.append(f'<line x1="{mod_x + 8}" y1="{base_y - 32}" x2="{x + len(subject.text)*4.2}" y2="{base_y - 8}" '
-                         'stroke="#333" stroke-width="1.5" stroke-linecap="round"/>')
-            mod_x += max(38, len(mod.text) * 7)
+        # modifiers (articles, adjectives) go on slanted lines below the subject
+        mod_attach_x = x
+        for mod in subject_mods:
+            draw_modifier(mod.text, mod_attach_x, base_y, is_above=False)
+            mod_attach_x += len(mod.text) * char_width + 4
 
-        # Main subject word on the baseline
-        parts.append(f'<text x="{x}" y="{base_y + 5}" font-size="15" font-weight="600" fill="#111">{subject.text}</text>')
+        draw_word(subject.text, x, base_y, bold=True)
+        x += len(subject.text) * char_width + 12
 
-        # Advance x past the subject
-        x += max(55, len(subject.text) * 8.5)
+        # Vertical line separating subject from predicate
+        parts.append(
+            f'<line x1="{x}" y1="{base_y - vertical_bar_height}" '
+            f'x2="{x}" y2="{base_y + vertical_bar_height}" '
+            'stroke="#222" stroke-width="2.2"/>'
+        )
+        x += 14
 
-        # Vertical bar separating subject from predicate
-        parts.append(f'<line x1="{x}" y1="{base_y - 18}" x2="{x}" y2="{base_y + 18}" '
-                     'stroke="#222" stroke-width="2.5"/>')
-        x += 18
-
-    # --- VERB / PREDICATE ---
+    # --- Verb + adverbs ---
     if verb:
-        # Adverbs on slanted lines below the verb
-        for mod in verb_modifiers:
-            parts.append(f'<text x="{x + 12}" y="{base_y + 32}" font-size="12" fill="#222" font-style="italic">{mod.text}</text>')
-            parts.append(f'<line x1="{x + 8}" y1="{base_y + 8}" x2="{x + 18}" y2="{base_y + 24}" '
-                         'stroke="#333" stroke-width="1.5"/>')
+        # adverbs below the verb
+        for mod in verb_mods:
+            draw_modifier(mod.text, x + 6, base_y, is_above=False)
 
-        parts.append(f'<text x="{x}" y="{base_y + 5}" font-size="15" font-weight="600" fill="#111">{verb.text}</text>')
-        x += max(60, len(verb.text) * 8.5)
+        draw_word(verb.text, x, base_y, bold=True)
+        x += len(verb.text) * char_width + 14
 
-    # --- DIRECT OBJECT ---
+    # --- Direct object ---
     if direct_object:
-        # Another vertical line before the object
-        parts.append(f'<line x1="{x}" y1="{base_y - 18}" x2="{x}" y2="{base_y + 18}" '
-                     'stroke="#222" stroke-width="2"/>')
-        x += 16
-        parts.append(f'<text x="{x}" y="{base_y + 5}" font-size="15" fill="#111">{direct_object.text}</text>')
-        x += max(50, len(direct_object.text) * 8)
+        # vertical line before object
+        parts.append(
+            f'<line x1="{x}" y1="{base_y - vertical_bar_height}" '
+            f'x2="{x}" y2="{base_y + vertical_bar_height}" '
+            'stroke="#222" stroke-width="2"/>'
+        )
+        x += 14
 
-    # --- PREPOSITIONAL PHRASES (pedestals) ---
-    for prep, pobj in preps:
-        ped_start_x = x - 25
-        # Slanted line from the main structure (usually from verb or object area)
-        parts.append(f'<text x="{ped_start_x}" y="{base_y + 38}" font-size="12" fill="#222">{prep.text}</text>')
-        parts.append(f'<line x1="{ped_start_x + 6}" y1="{base_y + 28}" x2="{ped_start_x + 22}" y2="{base_y + 55}" '
-                     'stroke="#333" stroke-width="1.5"/>')
+        # object modifiers (adjectives) below
+        for mod in obj_mods:
+            draw_modifier(mod.text, x + 4, base_y, is_above=False)
 
-        # Small horizontal line for the object of the preposition
-        obj_width = max(35, len(pobj.text) * 7.5)
-        parts.append(f'<line x1="{ped_start_x + 22}" y1="{base_y + 55}" x2="{ped_start_x + 22 + obj_width}" y2="{base_y + 55}" '
-                     'stroke="#333" stroke-width="1.5"/>')
-        parts.append(f'<text x="{ped_start_x + 26}" y="{base_y + 70}" font-size="13" fill="#111">{pobj.text}</text>')
+        draw_word(direct_object.text, x, base_y)
+        x += len(direct_object.text) * char_width + 10
 
-        x = max(x, ped_start_x + 22 + obj_width + 10)
+    # --- Prepositional phrases (pedestals) ---
+    for prep, pobj, attach in prepositional_phrases:
+        # attach point is roughly current x or near the verb/object
+        attach_x = x - 10
+        # slanted line down for the preposition
+        ped_y = base_y + 32
+        parts.append(f'<text x="{attach_x - 4}" y="{ped_y}" font-size="12" fill="#222">{prep.text}</text>')
+        parts.append(
+            f'<line x1="{attach_x + 2}" y1="{base_y + 6}" x2="{attach_x + 14}" y2="{ped_y - 4}" '
+            'stroke="#444" stroke-width="1.5"/>'
+        )
+        # horizontal line for pobj
+        pobj_x = attach_x + 16
+        pobj_width = max(28, len(pobj.text) * 6.8)
+        parts.append(
+            f'<line x1="{pobj_x}" y1="{base_y + 55}" x2="{pobj_x + pobj_width}" y2="{base_y + 55}" '
+            'stroke="#444" stroke-width="1.5"/>'
+        )
+        parts.append(f'<text x="{pobj_x + 3}" y="{base_y + 70}" font-size="13" fill="#111">{pobj.text}</text>')
 
-    # Baseline (the famous horizontal line)
-    baseline_end = max(x + 30, 420)
-    parts.append(f'<line x1="55" y1="{base_y}" x2="{baseline_end}" y2="{base_y}" '
-                 'stroke="#222" stroke-width="2"/>')
+    # Main baseline (the iconic thick horizontal line)
+    baseline_start = margin_left - 8
+    baseline_end = max(x + 40, 380)
+    parts.append(
+        f'<line x1="{baseline_start}" y1="{base_y}" x2="{baseline_end}" y2="{base_y}" '
+        'stroke="#222" stroke-width="2.4" stroke-linecap="square"/>'
+    )
 
-    parts.append('</svg>')
-    return '\n'.join(parts)
+    # Subtle "baseline" label on the right (optional, for clarity)
+    parts.append(
+        f'<text x="{baseline_end + 6}" y="{base_y + 4}" font-size="9" fill="#888">baseline</text>'
+    )
+
+    parts.append("</svg>")
+    return "\n".join(parts)
