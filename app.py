@@ -1,57 +1,55 @@
 import streamlit as st
-import spacy
 from src.parsers import get_parser
 
 st.set_page_config(page_title="Sentence Diagramm", layout="wide")
 st.title("Sentence Diagramm")
 st.markdown("Interactive diagramming for English & German — highlight placement of elements.")
 
-col1, col2 = st.columns(2)
-with col1:
-    lang = st.selectbox("Language", ["English", "German"])
-    sentence = st.text_area("Enter a sentence", "The cat sat on the mat.", height=100)
-    compare = st.checkbox("Compare with other language", value=False)
-with col2:
-    if compare:
-        other_lang = "German" if lang == "English" else "English"
-        other_sentence = st.text_area(f"Equivalent in {other_lang}", "", height=100)
+lang = st.selectbox("Language", ["English", "German"])
+sentence = st.text_area("Enter a sentence", "The cat sat on the mat.", height=100)
+
+compare = st.checkbox("Compare with equivalent in the other language (for word order)", value=False)
+other_sentence = ""
+if compare:
+    other_lang = "German" if lang == "English" else "English"
+    other_sentence = st.text_area(f"Equivalent sentence in {other_lang}", "Gestern a\u00df ich einen Apfel." if lang == "English" else "Yesterday I ate an apple.", height=100)
 
 if st.button("Diagram", type="primary"):
     parser = get_parser(lang)
     doc = parser.parse(sentence)
     
-    st.subheader(f"{lang} Parse")
+    st.subheader(f"{lang} Analysis")
     
-    # Token table with highlight
-    st.markdown("### Tokens (click to highlight in mind)")
+    # Token table
+    st.markdown("### Token Table (POS & Dependencies)")
     tokens_data = []
     for i, token in enumerate(doc):
         tokens_data.append({
-            "#": i,
+            "#": i+1,
             "Text": token.text,
             "POS": token.pos_,
             "Dep": token.dep_,
             "Head": token.head.text
         })
-    st.dataframe(tokens_data, use_container_width=True)
+    st.dataframe(tokens_data, use_container_width=True, hide_index=True)
     
-    # Simple dep diagram using text
-    st.markdown("### Dependency View")
+    # Text diagram
+    st.markdown("### Text Dependency Diagram")
     st.code(parser.to_text_diagram(doc))
     
-    # Try displacy if available
+    # Visual (displacy)
     try:
         from spacy import displacy
         html = displacy.render(doc, style="dep", page=False)
-        st.components.v1.html(html, height=400, scrolling=True)
-    except:
-        st.info("Install spacy for full visual.")
+        st.components.v1.html(html, height=450, scrolling=True)
+    except Exception as e:
+        st.info("Full visual requires spaCy displacy (usually works after model download).")
     
     if compare and other_sentence:
         other_parser = get_parser(other_lang)
         other_doc = other_parser.parse(other_sentence)
-        st.subheader(f"{other_lang} Parse")
+        st.subheader(f"{other_lang} Analysis (for comparison)")
         st.code(other_parser.to_text_diagram(other_doc))
-        st.dataframe([{"#":i, "Text":t.text, "POS":t.pos_, "Dep":t.dep_} for i,t in enumerate(other_doc)])
+        st.dataframe([{"#":i+1, "Text":t.text, "POS":t.pos_, "Dep":t.dep_ , "Head":t.head.text} for i,t in enumerate(other_doc)], use_container_width=True, hide_index=True)
         
-        st.markdown("**Word order note:** English is typically SVO. German main clauses are V2 (verb second).")
+        st.info("**Key difference to explore:** English is rigidly SVO. German main clauses are often V2 (verb in second position), with more flexible word order due to case marking.")
