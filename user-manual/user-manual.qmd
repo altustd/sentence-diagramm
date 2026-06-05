@@ -1,0 +1,28 @@
+---
+title: "Sentence Diagramm User Manual"
+author: "Troy Altus"
+date: "2026-06"
+---
+
+# Quick Start
+
+1. `pixi install`
+2. `pixi run download-models`
+3. `pixi run app`
+
+Enter sentences in English or German to see diagrams and element placement.
+
+# Language Support
+
+- English: SVO order, clear subjects/objects.
+- German: V2 in main clauses, case system, flexible order.
+
+Use the compare mode to see placement differences.
+
+# Extending
+
+Add new language in `src/parsers.py`.
+
+# DoltHub Integration
+
+Credential under altustd. Use for versioned example corpora if desired.
