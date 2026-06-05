@@ -3,10 +3,17 @@ from src.parsers import get_parser
 
 st.set_page_config(page_title="Sentence Diagramm", layout="wide")
 st.title("Sentence Diagramm")
-st.markdown("Interactive diagramming for English & German — highlight placement of elements.")
+st.markdown("Interactive diagramming for English & German — highlight placement of sentence elements.")
 
 lang = st.selectbox("Language", ["English", "German"])
 sentence = st.text_area("Enter a sentence", "The cat sat on the mat.", height=100)
+
+diagram_style = st.radio(
+    "Diagram Style",
+    ["Classic Reed-Kellogg (traditional)", "Modern Dependency Tree"],
+    horizontal=True,
+    index=0  # Default to classic as requested
+)
 
 compare = st.checkbox("Compare with equivalent in the other language (for word order)", value=False)
 other_sentence = ""
@@ -21,7 +28,7 @@ if st.button("Diagram", type="primary"):
         
         st.subheader(f"{lang} Analysis")
         
-        # Token table
+        # Always show token table (useful for both styles)
         st.markdown("### Token Table (POS & Dependencies)")
         tokens_data = []
         for i, token in enumerate(doc):
@@ -34,17 +41,29 @@ if st.button("Diagram", type="primary"):
             })
         st.dataframe(tokens_data, use_container_width=True, hide_index=True)
         
-        # Text diagram
-        st.markdown("### Text Dependency Diagram")
-        st.code(parser.to_text_diagram(doc))
-        
-        # Visual (displacy)
-        try:
-            from spacy import displacy
-            html = displacy.render(doc, style="dep", page=False)
-            st.components.v1.html(html, height=450, scrolling=True)
-        except Exception as e:
-            st.info("Full visual requires spaCy displacy (usually works after model download).")
+        if "Classic" in diagram_style:
+            # === CLASSIC REED-KELLOGG STYLE ===
+            st.markdown("### Classic Sentence Diagram (Reed-Kellogg style)")
+            try:
+                svg = parser.to_classic_diagram_svg(doc)
+                st.components.v1.html(svg, height=320, scrolling=False)
+                st.caption("Traditional diagram: horizontal baseline, vertical lines separate subject/predicate/direct object, slanted lines for modifiers, pedestals for prepositional phrases.")
+            except Exception as e:
+                st.error(f"Could not generate classic diagram: {e}")
+                st.info("Falling back to text description.")
+                st.code(parser.to_text_diagram(doc))
+        else:
+            # === MODERN DEPENDENCY ===
+            st.markdown("### Text Dependency Diagram")
+            st.code(parser.to_text_diagram(doc))
+            
+            st.markdown("### Visual Dependency Tree (spaCy displacy)")
+            try:
+                from spacy import displacy
+                html = displacy.render(doc, style="dep", page=False)
+                st.components.v1.html(html, height=450, scrolling=True)
+            except Exception as e:
+                st.info("Full visual requires spaCy displacy (usually works after model download).")
         
         if compare and other_sentence:
             other_parser = get_parser(other_lang)

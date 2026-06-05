@@ -1,4 +1,5 @@
 import spacy
+from .diagrams import generate_classic_diagram_svg
 
 class BaseParser:
     def __init__(self, model_name: str):
@@ -12,6 +13,10 @@ class BaseParser:
         for token in doc:
             lines.append(f"{token.text} --{token.dep_}--> {token.head.text} ({token.pos_})")
         return "\n".join(lines)
+
+    def to_classic_diagram_svg(self, doc) -> str:
+        """Return an SVG string for a traditional Reed-Kellogg style diagram."""
+        return generate_classic_diagram_svg(doc)
 
 class EnglishParser(BaseParser):
     def __init__(self):

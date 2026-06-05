@@ -6,8 +6,9 @@ Highlights placement of sentence elements (subjects, verbs, objects, modifiers) 
 
 ## Features
 - Support for English and German
-- Interactive token table with highlighting
-- Dependency tree visualization (text + visual)
+- **Classic Reed-Kellogg diagrams** (traditional baseline + vertical bars + slanted modifiers + pedestals for prepositional phrases) — the style shown on Grammarly and in most textbooks
+- Modern dependency tree (spaCy displacy) as an alternative view
+- Interactive token table
 - Side-by-side comparison mode for word order differences (e.g. English SVO vs German V2)
 - Example sentences
 - CLI for batch processing
@@ -45,5 +46,6 @@ Credential registered under altustd. You can create a Dolt database on DoltHub (
 ## Next Steps / Extending
 
 - Add more languages in `src/parsers.py`
-- Improve diagram rendering (traditional Reed-Kellogg style, interactive graphs)
-- Add export, more highlighting, corpus features
+- Improve the classic diagram renderer (better handling of compounds, infinitives, passive voice, German-specific structures)
+- Add export (SVG/PNG), more interactive highlighting, saved example corpora (possibly via Dolt)
+- Better German support for classic diagrams

@@ -14,14 +14,17 @@ date: "2026-06"
 
 If you get `OSError: [E050] Can't find model ...`, run step 2 again and restart the app.
 
-Enter sentences in English or German to see diagrams and element placement.
+# Diagram Styles
+
+- **Classic Reed-Kellogg** (the default): The traditional textbook style you see on Grammarly and in grammar books. Horizontal baseline, vertical lines separating subject/predicate/direct object, slanted lines for adjectives and adverbs, and "pedestals" for prepositional phrases.
+- **Modern Dependency Tree**: The full spaCy dependency visualization (good for seeing all relations).
 
 # Language Support
 
-- English: SVO order, clear subjects/objects.
-- German: V2 in main clauses, case system, flexible order.
+- English: Excellent support for classic diagrams.
+- German: Solid parsing and comparison mode. Classic diagrams are an approximation because German has verb-second (V2) main clauses and more flexible word order thanks to case endings.
 
-Use the compare mode to see placement differences (e.g. verb position).
+Use the **Compare** checkbox (and provide an equivalent sentence) to see how placement differs between the two languages.
 
 # Extending the Framework
 
