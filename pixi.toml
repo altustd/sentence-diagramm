@@ -8,6 +8,7 @@ python = ">=3.12,<3.13"
 streamlit = "*"
 spacy = "*"
 pandas = "*"
+pip = "*"
 
 [tasks]
 app = "streamlit run app.py"
