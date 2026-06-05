@@ -6,9 +6,13 @@ date: "2026-06"
 
 # Quick Start
 
+**Critical first step:** The spaCy models must be downloaded before the app will run.
+
 1. `pixi install`
-2. `pixi run download-models`
+2. `pixi run download-models`   (this fetches en_core_web_sm and de_core_news_sm)
 3. `pixi run app`
+
+If you get `OSError: [E050] Can't find model ...`, run step 2 again and restart the app.
 
 Enter sentences in English or German to see diagrams and element placement.
 
@@ -17,12 +21,12 @@ Enter sentences in English or German to see diagrams and element placement.
 - English: SVO order, clear subjects/objects.
 - German: V2 in main clauses, case system, flexible order.
 
-Use the compare mode to see placement differences.
+Use the compare mode to see placement differences (e.g. verb position).
 
-# Extending
+# Extending the Framework
 
-Add new language in `src/parsers.py`.
+Add new language support in `src/parsers.py` by subclassing BaseParser and registering in get_parser().
 
 # DoltHub Integration
 
-Credential under altustd. Use for versioned example corpora if desired.
+Your DoltHub credential is registered under altustd. You can create a database on DoltHub (e.g. "sentence-examples") and use `dolt clone altustd/your-db` to maintain a versioned collection of example sentences and parses.
