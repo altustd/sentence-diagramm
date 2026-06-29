@@ -19,6 +19,11 @@ If you get `OSError: [E050] Can't find model ...`, run step 2 again and restart 
 - **Classic Reed-Kellogg** (the default): The traditional textbook style you see on Grammarly and in grammar books. Horizontal baseline, vertical lines separating subject/predicate/direct object, slanted lines for adjectives and adverbs, and "pedestals" for prepositional phrases.
 - **Modern Dependency Tree**: The full spaCy dependency visualization (good for seeing all relations).
 
+# Diagram Styles
+
+- **Classic Reed-Kellogg** (the default): The traditional textbook style you see on Grammarly and in grammar books. Horizontal baseline, vertical bars separating subject/predicate/object, slanted lines for modifiers, and "pedestals" for prepositional phrases.
+- **Modern Dependency Tree**: The full spaCy dependency visualization (good for seeing all relations).
+
 # Language Support
 
 - English: Excellent support for classic diagrams.

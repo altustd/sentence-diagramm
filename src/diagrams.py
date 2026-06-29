@@ -10,6 +10,83 @@ These diagrams visually represent the grammatical structure:
 - "Pedestals" for prepositional phrases
 """
 
+# Universal Dependencies (English) and TIGER-style labels (German de_core_news_sm).
+_SUBJECT_DEPS = frozenset({"nsubj", "nsubjpass", "sb", "sgs"})
+_DIRECT_OBJECT_DEPS = frozenset({"dobj", "attr", "oprd", "oa", "og"})
+_INDIRECT_OBJECT_DEPS = frozenset({"iobj", "da"})
+_PREDICATE_DEPS = frozenset({"pd"})
+_NOUN_MODIFIER_DEPS = frozenset({"amod", "det", "compound", "nk"})
+_LEXICAL_VERB_DEPS = frozenset({"oc", "xcomp", "ccomp"})
+
+
+def _is_subject(token) -> bool:
+    return token.dep_ in _SUBJECT_DEPS
+
+
+def _is_direct_object(token) -> bool:
+    return token.dep_ in _DIRECT_OBJECT_DEPS
+
+
+def _is_indirect_object(token) -> bool:
+    return token.dep_ in _INDIRECT_OBJECT_DEPS
+
+
+def _is_predicate_complement(token) -> bool:
+    return token.dep_ in _PREDICATE_DEPS
+
+
+def _is_noun_modifier(token, noun) -> bool:
+    return token.head == noun and token.dep_ in _NOUN_MODIFIER_DEPS
+
+
+def _is_verb_modifier(token, verb) -> bool:
+    if token.head != verb:
+        return False
+    if token.dep_ == "advmod":
+        return True
+    return token.dep_ == "mo" and token.pos_ in {"ADV", "PART"}
+
+
+def _is_preposition(token) -> bool:
+    if token.dep_ == "prep":
+        return True
+    return token.dep_ == "mo" and token.pos_ == "ADP"
+
+
+def _prep_object(prep_token):
+    for child in prep_token.children:
+        if child.dep_ == "pobj":
+            return child
+        if child.dep_ in {"nk", "pd"} and child.pos_ in {"NOUN", "PROPN", "PRON"}:
+            return child
+    return None
+
+
+def _collect_noun_modifiers(doc, noun):
+    return [t for t in doc if _is_noun_modifier(t, noun)]
+
+
+def _find_verbs(doc):
+    """Return (root verb token, verb used for modifier attachment, baseline label)."""
+    root = next(
+        (t for t in doc if t.dep_ == "ROOT" and t.pos_ in {"VERB", "AUX"}),
+        None,
+    )
+    if root is None:
+        return None, None, None
+
+    lexical = next(
+        (c for c in root.children if c.dep_ in _LEXICAL_VERB_DEPS and c.pos_ in {"VERB", "AUX"}),
+        None,
+    )
+    attach = lexical or root
+    if root.pos_ == "AUX" and lexical is not None:
+        label = f"{root.text} {lexical.text}"
+    else:
+        label = root.text
+    return root, attach, label
+
+
 def generate_classic_diagram_svg(doc, width: int = 950, height: int = 320) -> str:
     """
     Generate a classic Reed-Kellogg style sentence diagram as SVG.
@@ -28,34 +105,25 @@ def generate_classic_diagram_svg(doc, width: int = 950, height: int = 320) -> st
     German support is approximate (V2 order etc.).
     """
     # --- Extract structure using spaCy deps (heuristic) ---
-    subject = None
-    verb = None
-    direct_object = None
-    subject_mods = []      # adjectives/articles for subject
-    verb_mods = []         # adverbs for verb
-    obj_mods = []          # adjectives for direct object
-    prepositional_phrases = []  # list of (prep_token, pobj_token, attachment_token)
+    subject = next((t for t in doc if _is_subject(t)), None)
+    _, attach_verb, verb_label = _find_verbs(doc)
+    direct_object = next((t for t in doc if _is_direct_object(t)), None)
+    indirect_object = next((t for t in doc if _is_indirect_object(t)), None)
+    predicate = next((t for t in doc if _is_predicate_complement(t)), None)
+
+    subject_mods = _collect_noun_modifiers(doc, subject) if subject else []
+    verb_mods = [t for t in doc if attach_verb and _is_verb_modifier(t, attach_verb)]
+    indirect_mods = _collect_noun_modifiers(doc, indirect_object) if indirect_object else []
+    obj_mods = _collect_noun_modifiers(doc, direct_object) if direct_object else []
+    prepositional_phrases = []
 
     for token in doc:
-        if token.dep_ in ("nsubj", "nsubjpass"):
-            subject = token
-        elif token.dep_ == "ROOT" and token.pos_ in ("VERB", "AUX"):
-            verb = token
-        elif token.dep_ in ("dobj", "attr", "oprd"):
-            direct_object = token
-        elif token.dep_ == "amod":
-            if subject and token.head == subject:
-                subject_mods.append(token)
-            elif direct_object and token.head == direct_object:
-                obj_mods.append(token)
-        elif token.dep_ == "advmod" and verb and token.head == verb:
-            verb_mods.append(token)
-        elif token.dep_ == "prep":
-            pobj = next((c for c in token.children if c.dep_ == "pobj"), None)
-            if pobj:
-                # attach to the most recent main element (object > verb > subject)
-                attach = direct_object or verb or subject
-                prepositional_phrases.append((token, pobj, attach))
+        if not _is_preposition(token):
+            continue
+        pobj = _prep_object(token)
+        if pobj:
+            attach = direct_object or indirect_object or attach_verb or subject
+            prepositional_phrases.append((token, pobj, attach))
 
     # --- Layout parameters ---
     base_y = 160
@@ -123,17 +191,15 @@ def generate_classic_diagram_svg(doc, width: int = 950, height: int = 320) -> st
         x += 14
 
     # --- Verb + adverbs ---
-    if verb:
-        # adverbs below the verb
+    if verb_label:
         for mod in verb_mods:
             draw_modifier(mod.text, x + 6, base_y, is_above=False)
 
-        draw_word(verb.text, x, base_y, bold=True)
-        x += len(verb.text) * char_width + 14
+        draw_word(verb_label, x, base_y, bold=True)
+        x += len(verb_label) * char_width + 14
 
-    # --- Direct object ---
-    if direct_object:
-        # vertical line before object
+    def draw_object_phrase(obj_token, mods):
+        nonlocal x
         parts.append(
             f'<line x1="{x}" y1="{base_y - vertical_bar_height}" '
             f'x2="{x}" y2="{base_y + vertical_bar_height}" '
@@ -141,12 +207,21 @@ def generate_classic_diagram_svg(doc, width: int = 950, height: int = 320) -> st
         )
         x += 14
 
-        # object modifiers (adjectives) below
-        for mod in obj_mods:
+        for mod in mods:
             draw_modifier(mod.text, x + 4, base_y, is_above=False)
 
-        draw_word(direct_object.text, x, base_y)
-        x += len(direct_object.text) * char_width + 10
+        draw_word(obj_token.text, x, base_y)
+        x += len(obj_token.text) * char_width + 10
+
+    # --- Indirect object (dative / iobj) ---
+    if indirect_object:
+        draw_object_phrase(indirect_object, indirect_mods)
+
+    # --- Direct object or predicate complement ---
+    complement = direct_object or predicate
+    complement_mods = obj_mods if direct_object else []
+    if complement:
+        draw_object_phrase(complement, complement_mods)
 
     # --- Prepositional phrases (pedestals) ---
     for prep, pobj, attach in prepositional_phrases:
