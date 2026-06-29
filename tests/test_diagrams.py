@@ -32,7 +32,14 @@ def test_german_simple_sentence(de_nlp):
 
 def test_german_v2_word_order(de_nlp):
     doc = de_nlp("Gestern aß ich einen Apfel.")
-    _svg_contains_roles(doc, "ich", "aß", "Apfel", "Gestern")
+    svg = generate_classic_diagram_svg(doc)
+    for word in ("Gestern", "aß", "ich", "Apfel"):
+        assert word in svg
+    gestern_idx = svg.index(">Gestern</text>")
+    ass_idx = svg.index(">aß</text>")
+    ich_idx = svg.index(">ich</text>")
+    apfel_idx = svg.index(">Apfel</text>")
+    assert gestern_idx < ass_idx < ich_idx < apfel_idx
 
 
 def test_german_dative_and_accusative(de_nlp):

@@ -87,6 +87,154 @@ def _find_verbs(doc):
     return root, attach, label
 
 
+def _german_baseline_items(doc):
+    """Build baseline segments in German surface (V2) word order."""
+    _, attach_verb, verb_label = _find_verbs(doc)
+    root = next((t for t in doc if t.dep_ == "ROOT"), None)
+    placed = set()
+    items = []
+
+    def append_item(token, text, role, mods=None):
+        items.append({"token": token, "text": text, "role": role, "mods": mods or []})
+        placed.add(token.i)
+
+    for token in doc:
+        if token.is_punct or token.i in placed:
+            continue
+
+        if _is_noun_modifier(token, token.head) and (
+            _is_subject(token.head)
+            or _is_direct_object(token.head)
+            or _is_indirect_object(token.head)
+            or (
+                token.head.dep_ == "nk"
+                and token.head.head is not None
+                and _is_preposition(token.head.head)
+            )
+        ):
+            continue
+
+        if _is_preposition(token):
+            pobj = _prep_object(token)
+            append_item(token, token.text, "prep")
+            if pobj is not None:
+                append_item(
+                    pobj,
+                    pobj.text,
+                    "pobj",
+                    _collect_noun_modifiers(doc, pobj),
+                )
+            continue
+
+        if token.dep_ == "ROOT" and token.pos_ in {"VERB", "AUX"}:
+            append_item(token, verb_label, "verb")
+            continue
+
+        if token.dep_ in _LEXICAL_VERB_DEPS and token.pos_ in {"VERB", "AUX"}:
+            append_item(token, token.text, "verb")
+            continue
+
+        if _is_subject(token):
+            append_item(token, token.text, "subject", _collect_noun_modifiers(doc, token))
+            continue
+
+        if _is_indirect_object(token):
+            append_item(token, token.text, "indirect", _collect_noun_modifiers(doc, token))
+            continue
+
+        if _is_direct_object(token):
+            append_item(token, token.text, "object", _collect_noun_modifiers(doc, token))
+            continue
+
+        if _is_predicate_complement(token):
+            append_item(token, token.text, "predicate")
+            continue
+
+        if attach_verb and _is_verb_modifier(token, attach_verb):
+            append_item(token, token.text, "adverb")
+            continue
+
+        if token.dep_ == "nk" and token.head == root:
+            append_item(token, token.text, "modifier")
+
+    return items
+
+
+def _role_needs_bar_before(role, previous_role):
+    if previous_role is None:
+        return False
+    if role == "verb" and previous_role in {"subject", "adverb", "fronted"}:
+        return True
+    if role == "subject" and previous_role == "verb":
+        return True
+    if role in {"object", "indirect", "predicate"} and previous_role not in {role, "prep", "pobj"}:
+        return True
+    return False
+
+
+def _generate_german_diagram_svg(doc, width: int = 950, height: int = 320) -> str:
+    """German diagrams preserve surface/V2 word order on the baseline."""
+    items = _german_baseline_items(doc)
+    base_y = 160
+    margin_left = 60
+    char_width = 7.8
+    vertical_bar_height = 22
+
+    parts = [
+        f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" '
+        f'font-family="Georgia, Times, serif" font-size="15">',
+        f'<rect x="0" y="0" width="{width}" height="26" fill="#f4f4f4" rx="3"/>',
+        f'<text x="{margin_left}" y="18" font-size="11" fill="#555" font-style="italic">'
+        f'{" ".join(t.text for t in doc)}</text>',
+    ]
+
+    x = margin_left
+    previous_role = None
+
+    def draw_word(text, x_pos, bold=False):
+        weight = 'font-weight="600"' if bold else ""
+        parts.append(f'<text x="{x_pos}" y="{base_y}" {weight}>{text}</text>')
+
+    def draw_modifier(mod_text, attach_x):
+        label_y = base_y + 28
+        parts.append(f'<text x="{attach_x - 5}" y="{label_y}" font-size="12" fill="#333">{mod_text}</text>')
+        parts.append(
+            f'<line x1="{attach_x - 2}" y1="{base_y + 3}" x2="{attach_x - 18}" y2="{label_y - 6}" '
+            'stroke="#444" stroke-width="1.6" stroke-linecap="round"/>'
+        )
+
+    for item in items:
+        role = item["role"]
+        if _role_needs_bar_before(role, previous_role):
+            parts.append(
+                f'<line x1="{x}" y1="{base_y - vertical_bar_height}" '
+                f'x2="{x}" y2="{base_y + vertical_bar_height}" '
+                'stroke="#222" stroke-width="2.2"/>'
+            )
+            x += 14
+
+        mod_attach_x = x
+        for mod in item["mods"]:
+            draw_modifier(mod.text, mod_attach_x)
+            mod_attach_x += len(mod.text) * char_width + 4
+
+        draw_word(item["text"], x, bold=(role in {"verb", "subject"}))
+        x += len(item["text"]) * char_width + 12
+        previous_role = role
+
+    baseline_start = margin_left - 8
+    baseline_end = max(x + 40, 380)
+    parts.append(
+        f'<line x1="{baseline_start}" y1="{base_y}" x2="{baseline_end}" y2="{base_y}" '
+        'stroke="#222" stroke-width="2.4" stroke-linecap="square"/>'
+    )
+    parts.append(
+        f'<text x="{baseline_end + 6}" y="{base_y + 4}" font-size="9" fill="#888">baseline</text>'
+    )
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
 def generate_classic_diagram_svg(doc, width: int = 950, height: int = 320) -> str:
     """
     Generate a classic Reed-Kellogg style sentence diagram as SVG.
@@ -102,8 +250,12 @@ def generate_classic_diagram_svg(doc, width: int = 950, height: int = 320) -> st
     This is a heuristic approximation based on spaCy dependencies.
     It works well for simple declarative sentences and gets progressively
     less perfect with complex clauses, questions, passives with agents, etc.
-    German support is approximate (V2 order etc.).
+    German uses surface/V2 word order on the baseline; English uses canonical
+    subject | verb | object order.
     """
+    if getattr(doc, "lang_", None) == "de":
+        return _generate_german_diagram_svg(doc, width=width, height=height)
+
     # --- Extract structure using spaCy deps (heuristic) ---
     subject = next((t for t in doc if _is_subject(t)), None)
     _, attach_verb, verb_label = _find_verbs(doc)
