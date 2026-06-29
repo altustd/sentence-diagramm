@@ -26,10 +26,16 @@ class GermanParser(BaseParser):
     def __init__(self):
         super().__init__("de_core_news_sm")
 
+class SpanishParser(BaseParser):
+    def __init__(self):
+        super().__init__("es_core_news_sm")
+
 def get_parser(language: str):
     if language.lower() in ["english", "en"]:
         return EnglishParser()
     elif language.lower() in ["german", "de"]:
         return GermanParser()
+    elif language.lower() in ["spanish", "es"]:
+        return SpanishParser()
     else:
         raise ValueError(f"Unsupported language: {language}")

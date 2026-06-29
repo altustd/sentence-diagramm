@@ -4,13 +4,15 @@
     "label": "Simple declarative + prepositional phrase",
     "english": "The cat sat on the mat.",
     "german": "Die Katze sitzt auf der Matte.",
-    "compare_note": "Both languages keep subject before the verb here. The main difference is case marking on **der Matte** (dative) vs **the mat**."
+    "spanish": "El gato se sentó en la alfombra.",
+    "compare_note": "English and Spanish keep subject-before-verb order here. German does too in this sentence. Watch reflexive **se** in Spanish and dative **der** in German."
   },
   {
     "id": "v2-adverb",
-    "label": "Fronted time adverb (V2 word order)",
+    "label": "Fronted time adverb",
     "english": "Yesterday I ate an apple.",
     "german": "Gestern aß ich einen Apfel.",
-    "compare_note": "English keeps SVO even with a fronted adverb: **Yesterday | I | ate | an apple**. German puts the verb second: **Gestern | aß | ich | einen Apfel** — the subject follows the verb."
+    "spanish": "Ayer comí una manzana.",
+    "compare_note": "English keeps SVO: **Yesterday | I | ate | apple**. German V2 puts the verb second: **Gestern | aß | ich | Apfel**. Spanish often allows the same SVO pattern as English: **Ayer | comí | manzana**."
   }
 ]

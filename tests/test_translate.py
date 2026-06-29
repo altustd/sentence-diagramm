@@ -19,3 +19,9 @@ def test_translate_rejects_empty():
 def test_translate_rejects_unsupported_pair():
     with pytest.raises(ValueError, match="Unsupported"):
         translate("Hello", "en", "fr")
+
+
+def test_translate_en_to_es():
+    with patch("src.translate._SUPPORTED", {("en", "es"): type("T", (), {"translate": lambda self, text: "El gato se sentó en la alfombra."})()}):
+        result = translate("The cat sat on the mat.", "en", "es")
+    assert result == "El gato se sentó en la alfombra."

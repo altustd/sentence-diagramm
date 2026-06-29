@@ -1,4 +1,4 @@
-"""English ↔ German translation for the study workflow."""
+"""English ↔ German/Spanish translation for the study workflow."""
 
 from __future__ import annotations
 
@@ -7,11 +7,18 @@ from deep_translator import GoogleTranslator
 _SUPPORTED = {
     ("en", "de"): GoogleTranslator(source="en", target="de"),
     ("de", "en"): GoogleTranslator(source="de", target="en"),
+    ("en", "es"): GoogleTranslator(source="en", target="es"),
+    ("es", "en"): GoogleTranslator(source="es", target="en"),
+}
+
+TARGET_LANGUAGES = {
+    "de": "German",
+    "es": "Spanish",
 }
 
 
 def translate(text: str, source: str, target: str) -> str:
-    """Translate *text* between English (en) and German (de)."""
+    """Translate *text* between English, German (de), and Spanish (es)."""
     cleaned = text.strip()
     if not cleaned:
         raise ValueError("Cannot translate an empty sentence.")

@@ -1,51 +1,60 @@
 # Sentence Diagramm
 
-Interactive sentence diagramming framework for English and German (starting point for other languages).
+Interactive sentence diagramming for English, German, and Spanish.
 
-Highlights placement of sentence elements (subjects, verbs, objects, modifiers) using dependency parsing and visual diagrams.
+Enter an English sentence → the app **translates** it → diagrams English and each translation **side by side** with baseline word-order comparison. Built for language study: see how German V2 and Spanish surface order differ from English after translation.
 
 ## Features
-- Support for English and German
-- **Classic Reed-Kellogg diagrams** (traditional baseline + vertical bars + slanted modifiers + pedestals for prepositional phrases) — the style shown on Grammarly and in most textbooks
-- Modern dependency tree (spaCy displacy) as an alternative view
-- Interactive token table
-- Side-by-side comparison mode for word order differences (e.g. English SVO vs German V2)
-- Example sentences
-- CLI for batch processing
+
+- **Translate & Diagram** workflow (English → German / Spanish)
+- Classic **Reed-Kellogg** SVG diagrams + modern dependency trees
+- German **V2 surface word order** on the baseline
+- Spanish **UD parsing** (reflexives, `obl`, copula)
+- Editable machine translations
+- Example sentence pairs
+- CLI for quick parsing checks
 
 ## Run Locally
 
-**Important:** The first time you must download the spaCy language models.
-
 ```bash
-pixi install
-pixi run download-models   # downloads en_core_web_sm + de_core_news_sm
-pixi run app
+pixi install          # installs spaCy models + dependencies
+pixi run app            # http://localhost:8501
 ```
 
-If you see `OSError: [E050] Can't find model 'en_core_web_sm'` (or similar for German), just run the `download-models` task and restart the app.
+Models install automatically via `pixi install`. If needed manually:
+
+```bash
+pixi run download-models
+```
+
+## Streamlit Cloud Deploy
+
+The repo includes `requirements.txt` and `streamlit_app.py` for [Streamlit Community Cloud](https://share.streamlit.io/):
+
+1. Go to **share.streamlit.io** → **New app**
+2. Repo: `altustd/sentence-diagramm`, branch `main`
+3. Main file: `streamlit_app.py`
+4. Deploy (first build takes a few minutes — three spaCy models)
+
+Translation requires network access at runtime.
 
 ## CLI
 
 ```bash
-pixi run cli -- --lang en "The quick brown fox jumps over the lazy dog."
+pixi run cli -- --lang en "The cat sat on the mat."
+pixi run cli -- --lang de "Die Katze sitzt auf der Matte."
+pixi run cli -- --lang es "El gato se sentó en la alfombra."
+```
+
+## Tests
+
+```bash
+pixi run test
 ```
 
 ## Tech
 
-- Streamlit for UI
-- spaCy for parsing (en_core_web_sm, de_core_news_sm)
-- Pixi for reproducible environment
-
-Extensible parser framework in `src/parsers.py` — easy to add more languages.
-
-## DoltHub
-
-Credential registered under altustd. You can create a Dolt database on DoltHub (e.g. "sentence-examples") and use the CLI to version example sentences + parses.
-
-## Next Steps / Extending
-
-- Add more languages in `src/parsers.py`
-- Improve the classic diagram renderer (better handling of compounds, infinitives, passive voice, German-specific structures)
-- Add export (SVG/PNG), more interactive highlighting, saved example corpora (possibly via Dolt)
-- Better German support for classic diagrams
+- Streamlit UI
+- spaCy (`en_core_web_sm`, `de_core_news_sm`, `es_core_news_sm`)
+- deep-translator (Google Translate API)
+- Pixi for local dev; pip `requirements.txt` for cloud deploy

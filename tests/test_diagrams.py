@@ -62,3 +62,26 @@ def test_baseline_words_v2_pair(en_nlp, de_nlp):
 def test_baseline_words_perfect_tense(de_nlp):
     doc = de_nlp("Gestern habe ich einen Apfel gegessen.")
     assert get_baseline_words(doc) == ["Gestern", "habe gegessen", "ich", "Apfel"]
+
+
+@pytest.fixture(scope="module")
+def es_nlp():
+    return spacy.load("es_core_news_sm")
+
+
+def test_spanish_simple_pp(es_nlp):
+    doc = es_nlp("El gato se sentó en la alfombra.")
+    svg = generate_classic_diagram_svg(doc)
+    for word in ("gato", "sentó", "en", "alfombra"):
+        assert word in svg
+    assert get_baseline_words(doc) == ["gato", "se", "sentó", "en", "alfombra"]
+
+
+def test_spanish_fronted_adverb(es_nlp):
+    doc = es_nlp("Ayer comí una manzana.")
+    assert get_baseline_words(doc) == ["Ayer", "comí", "manzana"]
+
+
+def test_spanish_copula(es_nlp):
+    doc = es_nlp("El libro es interesante.")
+    assert get_baseline_words(doc) == ["libro", "es", "interesante"]

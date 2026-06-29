@@ -12,10 +12,12 @@ These diagrams visually represent the grammatical structure:
 
 # Universal Dependencies (English) and TIGER-style labels (German de_core_news_sm).
 _SUBJECT_DEPS = frozenset({"nsubj", "nsubjpass", "sb", "sgs"})
-_DIRECT_OBJECT_DEPS = frozenset({"dobj", "attr", "oprd", "oa", "og"})
+_DIRECT_OBJECT_DEPS = frozenset({"dobj", "attr", "oprd", "oa", "og", "obj", "conj"})
 _INDIRECT_OBJECT_DEPS = frozenset({"iobj", "da"})
 _PREDICATE_DEPS = frozenset({"pd"})
 _NOUN_MODIFIER_DEPS = frozenset({"amod", "det", "compound", "nk"})
+_OBL_DEPS = frozenset({"obl", "pobj"})
+_PRONOUN_BASELINE_DEPS = frozenset({"expl:pv", "expl", "iobj"})
 _LEXICAL_VERB_DEPS = frozenset({"oc", "xcomp", "ccomp"})
 
 
@@ -48,9 +50,13 @@ def _is_verb_modifier(token, verb) -> bool:
 
 
 def _is_preposition(token) -> bool:
-    if token.dep_ == "prep":
+    if token.dep_ in {"prep", "case"}:
         return True
     return token.dep_ == "mo" and token.pos_ == "ADP"
+
+
+def _is_oblique(token) -> bool:
+    return token.dep_ in _OBL_DEPS
 
 
 def _prep_object(prep_token):
@@ -62,18 +68,29 @@ def _prep_object(prep_token):
     return None
 
 
+def _obl_case_marker(obl_token):
+    return next((c for c in obl_token.children if c.dep_ == "case"), None)
+
+
 def _collect_noun_modifiers(doc, noun):
     return [t for t in doc if _is_noun_modifier(t, noun)]
 
 
 def _find_verbs(doc):
     """Return (root verb token, verb used for modifier attachment, baseline label)."""
-    root = next(
-        (t for t in doc if t.dep_ == "ROOT" and t.pos_ in {"VERB", "AUX"}),
-        None,
-    )
+    root = next((t for t in doc if t.dep_ == "ROOT"), None)
     if root is None:
         return None, None, None
+
+    cop = next((c for c in root.children if c.dep_ == "cop"), None)
+    if cop is not None:
+        return cop, cop, f"{cop.text} {root.text}"
+
+    if root.pos_ not in {"VERB", "AUX", "ADJ"}:
+        return None, None, None
+
+    if root.pos_ == "ADJ":
+        return root, root, root.text
 
     lexical = next(
         (c for c in root.children if c.dep_ in _LEXICAL_VERB_DEPS and c.pos_ in {"VERB", "AUX"}),
@@ -163,6 +180,69 @@ def _german_baseline_items(doc):
     return items
 
 
+def _spanish_baseline_items(doc):
+    """Build baseline segments in Spanish surface word order (UD tags)."""
+    _, attach_verb, verb_label = _find_verbs(doc)
+    root = next((t for t in doc if t.dep_ == "ROOT"), None)
+    placed = set()
+    items = []
+
+    def append_item(token, text, role, mods=None):
+        items.append({"token": token, "text": text, "role": role, "mods": mods or []})
+        placed.add(token.i)
+
+    for token in doc:
+        if token.is_punct or token.i in placed:
+            continue
+
+        if _is_noun_modifier(token, token.head) and (
+            _is_subject(token.head)
+            or _is_direct_object(token.head)
+            or _is_indirect_object(token.head)
+            or _is_oblique(token.head)
+        ):
+            continue
+
+        if _is_oblique(token):
+            case_marker = _obl_case_marker(token)
+            if case_marker is not None:
+                append_item(case_marker, case_marker.text, "prep")
+            append_item(token, token.text, "pobj", _collect_noun_modifiers(doc, token))
+            continue
+
+        if _is_subject(token):
+            append_item(token, token.text, "subject", _collect_noun_modifiers(doc, token))
+            continue
+
+        if token.dep_ in _PRONOUN_BASELINE_DEPS:
+            append_item(token, token.text, "pronoun")
+            continue
+
+        if token.dep_ == "cop":
+            append_item(token, token.text, "verb")
+            continue
+
+        if token.dep_ == "ROOT" and token.pos_ in {"VERB", "AUX", "ADJ"}:
+            if any(c.dep_ == "cop" for c in token.children):
+                append_item(token, token.text, "predicate")
+                continue
+            append_item(token, verb_label or token.text, "verb")
+            continue
+
+        if _is_direct_object(token) and token.head in {attach_verb, root}:
+            case_marker = _obl_case_marker(token)
+            if case_marker is not None:
+                append_item(case_marker, case_marker.text, "prep")
+            append_item(token, token.text, "object", _collect_noun_modifiers(doc, token))
+            continue
+
+        if attach_verb and _is_verb_modifier(token, attach_verb):
+            append_item(token, token.text, "adverb")
+            continue
+
+    return items
+
+
 def _english_baseline_words(doc) -> list[str]:
     """Words placed on the English diagram baseline, in reading order."""
     subject = next((t for t in doc if _is_subject(t)), None)
@@ -193,8 +273,11 @@ def _english_baseline_words(doc) -> list[str]:
 
 def get_baseline_words(doc) -> list[str]:
     """Return baseline word order as rendered in the classic diagram."""
-    if getattr(doc, "lang_", None) == "de":
+    lang = getattr(doc, "lang_", None)
+    if lang == "de":
         return [item["text"] for item in _german_baseline_items(doc)]
+    if lang == "es":
+        return [item["text"] for item in _spanish_baseline_items(doc)]
     return _english_baseline_words(doc)
 
 
@@ -210,9 +293,8 @@ def _role_needs_bar_before(role, previous_role):
     return False
 
 
-def _generate_german_diagram_svg(doc, width: int = 950, height: int = 320) -> str:
-    """German diagrams preserve surface/V2 word order on the baseline."""
-    items = _german_baseline_items(doc)
+def _generate_surface_diagram_svg(doc, items, width: int = 950, height: int = 320) -> str:
+    """Diagram with baseline segments in surface reading order."""
     base_y = 160
     margin_left = 60
     char_width = 7.8
@@ -273,6 +355,14 @@ def _generate_german_diagram_svg(doc, width: int = 950, height: int = 320) -> st
     return "\n".join(parts)
 
 
+def _generate_german_diagram_svg(doc, width: int = 950, height: int = 320) -> str:
+    return _generate_surface_diagram_svg(doc, _german_baseline_items(doc), width=width, height=height)
+
+
+def _generate_spanish_diagram_svg(doc, width: int = 950, height: int = 320) -> str:
+    return _generate_surface_diagram_svg(doc, _spanish_baseline_items(doc), width=width, height=height)
+
+
 def generate_classic_diagram_svg(doc, width: int = 950, height: int = 320) -> str:
     """
     Generate a classic Reed-Kellogg style sentence diagram as SVG.
@@ -288,11 +378,14 @@ def generate_classic_diagram_svg(doc, width: int = 950, height: int = 320) -> st
     This is a heuristic approximation based on spaCy dependencies.
     It works well for simple declarative sentences and gets progressively
     less perfect with complex clauses, questions, passives with agents, etc.
-    German uses surface/V2 word order on the baseline; English uses canonical
-    subject | verb | object order.
+    German and Spanish use surface word order on the baseline; English uses
+    canonical subject | verb | object order.
     """
-    if getattr(doc, "lang_", None) == "de":
+    lang = getattr(doc, "lang_", None)
+    if lang == "de":
         return _generate_german_diagram_svg(doc, width=width, height=height)
+    if lang == "es":
+        return _generate_spanish_diagram_svg(doc, width=width, height=height)
 
     # --- Extract structure using spaCy deps (heuristic) ---
     subject = next((t for t in doc if _is_subject(t)), None)
