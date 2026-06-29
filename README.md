@@ -38,6 +38,8 @@ The repo includes `requirements.txt` and `streamlit_app.py` for [Streamlit Commu
 
 Translation requires network access at runtime.
 
+**Live app:** [sentence-diagramm-364kv8mmlk7ui6ljpahykb.streamlit.app](https://sentence-diagramm-364kv8mmlk7ui6ljpahykb.streamlit.app/)
+
 ## CLI
 
 ```bash
