@@ -131,6 +131,9 @@ def _german_baseline_items(doc):
             continue
 
         if token.dep_ in _LEXICAL_VERB_DEPS and token.pos_ in {"VERB", "AUX"}:
+            # Auxiliary + participle/infinitive is already folded into verb_label.
+            if root is not None and root.pos_ == "AUX" and token.dep_ == "oc":
+                continue
             append_item(token, token.text, "verb")
             continue
 
@@ -158,6 +161,41 @@ def _german_baseline_items(doc):
             append_item(token, token.text, "modifier")
 
     return items
+
+
+def _english_baseline_words(doc) -> list[str]:
+    """Words placed on the English diagram baseline, in reading order."""
+    subject = next((t for t in doc if _is_subject(t)), None)
+    _, _, verb_label = _find_verbs(doc)
+    indirect_object = next((t for t in doc if _is_indirect_object(t)), None)
+    direct_object = next((t for t in doc if _is_direct_object(t)), None)
+    predicate = next((t for t in doc if _is_predicate_complement(t)), None)
+
+    words: list[str] = []
+    if subject is not None:
+        words.append(subject.text)
+    if verb_label:
+        words.append(verb_label)
+    if indirect_object is not None:
+        words.append(indirect_object.text)
+    complement = direct_object or predicate
+    if complement is not None:
+        words.append(complement.text)
+    for token in doc:
+        if not _is_preposition(token):
+            continue
+        words.append(token.text)
+        pobj = _prep_object(token)
+        if pobj is not None:
+            words.append(pobj.text)
+    return words
+
+
+def get_baseline_words(doc) -> list[str]:
+    """Return baseline word order as rendered in the classic diagram."""
+    if getattr(doc, "lang_", None) == "de":
+        return [item["text"] for item in _german_baseline_items(doc)]
+    return _english_baseline_words(doc)
 
 
 def _role_needs_bar_before(role, previous_role):

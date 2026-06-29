@@ -1,7 +1,7 @@
 import spacy
 import pytest
 
-from src.diagrams import generate_classic_diagram_svg
+from src.diagrams import generate_classic_diagram_svg, get_baseline_words
 
 
 @pytest.fixture(scope="module")
@@ -50,3 +50,15 @@ def test_german_dative_and_accusative(de_nlp):
 def test_german_predicate_complement(de_nlp):
     doc = de_nlp("Das Buch ist interessant.")
     _svg_contains_roles(doc, "Buch", "ist", "interessant")
+
+
+def test_baseline_words_v2_pair(en_nlp, de_nlp):
+    en_doc = en_nlp("Yesterday I ate an apple.")
+    de_doc = de_nlp("Gestern aß ich einen Apfel.")
+    assert get_baseline_words(en_doc) == ["I", "ate", "apple"]
+    assert get_baseline_words(de_doc) == ["Gestern", "aß", "ich", "Apfel"]
+
+
+def test_baseline_words_perfect_tense(de_nlp):
+    doc = de_nlp("Gestern habe ich einen Apfel gegessen.")
+    assert get_baseline_words(doc) == ["Gestern", "habe gegessen", "ich", "Apfel"]

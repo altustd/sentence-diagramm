@@ -1,93 +1,169 @@
+import json
+from pathlib import Path
+
 import streamlit as st
+
+from src.diagrams import get_baseline_words
 from src.parsers import get_parser
+from src.translate import translate
+
+DATA_DIR = Path(__file__).parent / "data"
+EXAMPLE_PAIRS = json.loads((DATA_DIR / "example_pairs.json").read_text(encoding="utf-8"))
+
+
+def render_token_table(doc):
+    tokens_data = [
+        {
+            "#": i + 1,
+            "Text": token.text,
+            "POS": token.pos_,
+            "Dep": token.dep_,
+            "Head": token.head.text,
+        }
+        for i, token in enumerate(doc)
+    ]
+    st.dataframe(tokens_data, use_container_width=True, hide_index=True)
+
+
+def render_diagram(parser, doc, language: str, diagram_style: str):
+    if "Classic" in diagram_style:
+        st.markdown("#### Classic Reed-Kellogg diagram")
+        try:
+            svg = parser.to_classic_diagram_svg(doc)
+            st.components.v1.html(svg, height=320, scrolling=False)
+        except Exception as exc:
+            st.error(f"Could not generate classic diagram: {exc}")
+            st.code(parser.to_text_diagram(doc))
+    else:
+        st.markdown("#### Dependency tree")
+        st.code(parser.to_text_diagram(doc))
+        try:
+            from spacy import displacy
+
+            html = displacy.render(doc, style="dep", page=False)
+            st.components.v1.html(html, height=420, scrolling=True)
+        except Exception:
+            st.info("Visual displacy view unavailable.")
+
+
+def render_word_order_strip(en_doc, de_doc):
+    en_words = get_baseline_words(en_doc)
+    de_words = get_baseline_words(de_doc)
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**English baseline**")
+        st.code(" | ".join(en_words) if en_words else "(none)")
+    with right:
+        st.markdown("**German baseline**")
+        st.code(" | ".join(de_words) if de_words else "(none)")
+
 
 st.set_page_config(page_title="Sentence Diagramm", layout="wide")
 st.title("Sentence Diagramm")
-st.markdown("Interactive diagramming for English & German — highlight placement of sentence elements.")
-
-lang = st.selectbox("Language", ["English", "German"])
-sentence = st.text_area("Enter a sentence", "The cat sat on the mat.", height=100)
-
-diagram_style = st.radio(
-    "Diagram Style",
-    ["Classic Reed-Kellogg (traditional)", "Modern Dependency Tree"],
-    horizontal=True,
-    index=0  # Default to classic as requested
+st.markdown(
+    "Enter an **English** sentence. The app **translates it to German**, then diagrams "
+    "both side by side so you can see how word order changes after translation."
 )
 
-compare = st.checkbox("Compare with equivalent in the other language (for word order)", value=False)
-other_sentence = ""
-if compare:
-    other_lang = "German" if lang == "English" else "English"
-    other_sentence = st.text_area(f"Equivalent sentence in {other_lang}", "Gestern a\u00df ich einen Apfel." if lang == "English" else "Yesterday I ate an apple.", height=100)
+example_labels = ["Custom sentence"] + [pair["label"] for pair in EXAMPLE_PAIRS]
+selected_label = st.selectbox("Example", example_labels, index=1)
+selected_pair = None
+if selected_label != "Custom sentence":
+    selected_pair = next(pair for pair in EXAMPLE_PAIRS if pair["label"] == selected_label)
 
-if st.button("Diagram", type="primary"):
+default_english = selected_pair["english"] if selected_pair else "The cat sat on the mat."
+english_sentence = st.text_area("English sentence", default_english, height=90)
+
+diagram_style = st.radio(
+    "Diagram style",
+    ["Classic Reed-Kellogg (traditional)", "Modern Dependency Tree"],
+    horizontal=True,
+    index=0,
+)
+
+show_token_tables = st.checkbox("Show token tables", value=False)
+
+if st.button("Translate & Diagram", type="primary"):
+    st.session_state["run"] = True
+    st.session_state["english_sentence"] = english_sentence
+    st.session_state.pop("german_sentence", None)
+
+if st.session_state.get("run"):
+    english = st.session_state.get("english_sentence", english_sentence).strip()
+    if not english:
+        st.warning("Enter an English sentence first.")
+        st.stop()
+
+    if "german_sentence" not in st.session_state:
+        try:
+            st.session_state["german_sentence"] = translate(english, "en", "de")
+        except Exception as exc:
+            st.error(f"Translation failed: {exc}")
+            st.info("Check your network connection, or type the German sentence manually below.")
+            st.session_state["german_sentence"] = (
+                selected_pair["german"] if selected_pair else ""
+            )
+
+    st.subheader("Translation")
+    german = st.text_area(
+        "German translation (auto-generated — edit if the machine got it wrong)",
+        st.session_state["german_sentence"],
+        height=90,
+    )
+    st.session_state["german_sentence"] = german
+
+    if not german.strip():
+        st.warning("A German sentence is required before diagramming.")
+        st.stop()
+
     try:
-        parser = get_parser(lang)
-        doc = parser.parse(sentence)
-        
-        st.subheader(f"{lang} Analysis")
-        
-        # Always show token table (useful for both styles)
-        st.markdown("### Token Table (POS & Dependencies)")
-        tokens_data = []
-        for i, token in enumerate(doc):
-            tokens_data.append({
-                "#": i+1,
-                "Text": token.text,
-                "POS": token.pos_,
-                "Dep": token.dep_,
-                "Head": token.head.text
-            })
-        st.dataframe(tokens_data, use_container_width=True, hide_index=True)
-        
-        if "Classic" in diagram_style:
-            # === CLASSIC REED-KELLOGG STYLE ===
-            st.markdown("### Classic Sentence Diagram (Reed-Kellogg style)")
-            try:
-                svg = parser.to_classic_diagram_svg(doc)
-                st.components.v1.html(svg, height=320, scrolling=False)
-                st.caption("Traditional diagram: horizontal baseline, vertical lines separate subject/predicate/direct object, slanted lines for modifiers, pedestals for prepositional phrases.")
-            except Exception as e:
-                st.error(f"Could not generate classic diagram: {e}")
-                st.info("Falling back to text description.")
-                st.code(parser.to_text_diagram(doc))
+        en_parser = get_parser("English")
+        de_parser = get_parser("German")
+        en_doc = en_parser.parse(english)
+        de_doc = de_parser.parse(german)
+
+        st.subheader("Word order on the diagram baseline")
+        render_word_order_strip(en_doc, de_doc)
+        if selected_pair:
+            st.caption(selected_pair["compare_note"])
         else:
-            # === MODERN DEPENDENCY ===
-            st.markdown("### Text Dependency Diagram")
-            st.code(parser.to_text_diagram(doc))
-            
-            st.markdown("### Visual Dependency Tree (spaCy displacy)")
-            try:
-                from spacy import displacy
-                html = displacy.render(doc, style="dep", page=False)
-                st.components.v1.html(html, height=450, scrolling=True)
-            except Exception as e:
-                st.info("Full visual requires spaCy displacy (usually works after model download).")
-        
-        if compare and other_sentence:
-            other_parser = get_parser(other_lang)
-            other_doc = other_parser.parse(other_sentence)
-            st.subheader(f"{other_lang} Analysis (for comparison)")
-            st.code(other_parser.to_text_diagram(other_doc))
-            st.dataframe([{"#":i+1, "Text":t.text, "POS":t.pos_, "Dep":t.dep_ , "Head":t.head.text} for i,t in enumerate(other_doc)], use_container_width=True, hide_index=True)
-            
-            st.info("**Key difference to explore:** English is rigidly SVO. German main clauses are often V2 (verb in second position), with more flexible word order due to case marking.")
+            st.caption(
+                "English diagrams use canonical subject | verb | object order. "
+                "German diagrams follow surface word order (V2 where applicable)."
+            )
+
+        left, right = st.columns(2)
+        with left:
+            st.subheader("English")
+            st.markdown(f"*{english}*")
+            if show_token_tables:
+                render_token_table(en_doc)
+            render_diagram(en_parser, en_doc, "English", diagram_style)
+
+        with right:
+            st.subheader("German")
+            st.markdown(f"*{german}*")
+            if show_token_tables:
+                render_token_table(de_doc)
+            render_diagram(de_parser, de_doc, "German", diagram_style)
+            st.caption(
+                "German baseline preserves translated word order — the whole point of the exercise."
+            )
+
     except OSError as e:
         if "Can't find model" in str(e):
             st.error("spaCy language model not found.")
-            st.markdown("""
-            **Fix:**
-            
-            1. Make sure you are in the project directory (`cd sentence-diagramm`)
-            2. Run:
-               ```bash
-               pixi run download-models
-               ```
-            3. Restart the app (`pixi run app` or Ctrl+C and run again).
-            
-            This downloads the required models (`en_core_web_sm` and `de_core_news_sm`).
-            """)
+            st.markdown(
+                """
+                **Fix:** run `pixi install` (models install automatically) or:
+
+                ```bash
+                pixi run download-models
+                ```
+
+                Then restart the app.
+                """
+            )
         else:
             st.error(f"Unexpected error loading parser: {e}")
             raise

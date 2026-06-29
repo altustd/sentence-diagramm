@@ -1,6 +1,6 @@
 [
-  {"lang": "English", "sentence": "The cat sat on the mat."},
-  {"lang": "English", "sentence": "Yesterday I ate an apple."},
-  {"lang": "German", "sentence": "Gestern aß ich einen Apfel."},
-  {"lang": "German", "sentence": "Die Katze sitzt auf der Matte."}
+  {"pair": "simple-pp", "lang": "English", "sentence": "The cat sat on the mat."},
+  {"pair": "simple-pp", "lang": "German", "sentence": "Die Katze sitzt auf der Matte."},
+  {"pair": "v2-adverb", "lang": "English", "sentence": "Yesterday I ate an apple."},
+  {"pair": "v2-adverb", "lang": "German", "sentence": "Gestern aß ich einen Apfel."}
 ]
